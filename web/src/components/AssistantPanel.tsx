@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { errorStatus, trackEvent } from "../analytics/pendo";
 import { sendAssistantMessage, type ChatMessage } from "../api/assistant";
 
 const SUGGESTED_PROMPTS = [
@@ -23,7 +24,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const send = async (text: string) => {
+  const send = async (text: string, isSuggestedPrompt = false) => {
     const prompt = text.trim();
     if (prompt === "" || thinking) return;
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content: prompt };
@@ -32,11 +33,31 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
     setDraft("");
     setError(null);
     setThinking(true);
+    const startedAt = performance.now();
     try {
       const reply = await sendAssistantMessage(conversationId, conversation);
       setMessages((current) => [...current, reply.message]);
+      // The AI assistant answered. Only the prompt's length is sent, never its text.
+      trackEvent("assistant_reply_received", {
+        conversationId,
+        messageCount: conversation.length + 1,
+        userTurnCount: conversation.filter((message) => message.role === "user").length,
+        isSuggestedPrompt,
+        promptLength: prompt.length,
+        replyLength: reply.message.content.length,
+        responseTimeMs: Math.round(performance.now() - startedAt),
+      });
     } catch (e) {
       setError((e as Error).message);
+      // The assistant chat API call failed.
+      trackEvent("assistant_reply_failed", {
+        conversationId,
+        messageCount: conversation.length,
+        isSuggestedPrompt,
+        errorStatus: errorStatus(e),
+        errorMessage: (e as Error).message.slice(0, 100),
+        responseTimeMs: Math.round(performance.now() - startedAt),
+      });
     } finally {
       setThinking(false);
     }
@@ -73,7 +94,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
             Ask me anything about planning a trip.
             <div className="suggestions">
               {SUGGESTED_PROMPTS.map((prompt) => (
-                <button key={prompt} type="button" className="secondary" onClick={() => void send(prompt)}>
+                <button key={prompt} type="button" className="secondary" onClick={() => void send(prompt, true)}>
                   {prompt}
                 </button>
               ))}

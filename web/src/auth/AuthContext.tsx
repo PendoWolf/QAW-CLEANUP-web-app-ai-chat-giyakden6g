@@ -1,11 +1,12 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
-import { authApi, type Account, type User } from "../api/auth";
+import { authApi, type Account, type Session, type User } from "../api/auth";
 import { clearSession, readSession, saveSession } from "./session";
 
 interface AuthState {
   user: User | null;
   account: Account | null;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** Signs in and resolves with the new session. */
+  signIn: (email: string, password: string) => Promise<Session>;
   signOut: () => Promise<void>;
   /** Replaces the signed-in user's details, after they edit their profile. */
   updateUser: (user: User) => void;
@@ -21,6 +22,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const signedIn = await authApi.signIn(email, password);
     saveSession(signedIn);
     setSession(signedIn);
+    return signedIn;
   }, []);
 
   const signOut = useCallback(async () => {
