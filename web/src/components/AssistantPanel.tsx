@@ -7,6 +7,8 @@ const SUGGESTED_PROMPTS = [
   "Find a cheaper alternative to Paris in spring",
 ];
 
+const PENDO_AGENT_ID = "Qq-gHYFIOEDSBIwIFLsoTym7gNE";
+
 function newConversationId(): string {
   return crypto.randomUUID();
 }
@@ -23,17 +25,31 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
   const [thinking, setThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const send = async (text: string) => {
+  const send = async (text: string, suggestedPrompt = false) => {
     const prompt = text.trim();
     if (prompt === "" || thinking) return;
     const userMessage: ChatMessage = { id: crypto.randomUUID(), role: "user", content: prompt };
     const conversation = [...messages, userMessage];
+    window.pendo?.trackAgent("prompt", {
+      agentId: PENDO_AGENT_ID,
+      conversationId,
+      messageId: userMessage.id,
+      content: prompt,
+      suggestedPrompt,
+      fileUploaded: false,
+    });
     setMessages(conversation);
     setDraft("");
     setError(null);
     setThinking(true);
     try {
       const reply = await sendAssistantMessage(conversationId, conversation);
+      window.pendo?.trackAgent("agent_response", {
+        agentId: PENDO_AGENT_ID,
+        conversationId,
+        messageId: reply.message.id || `agent_response_${Date.now()}`,
+        content: reply.message.content,
+      });
       setMessages((current) => [...current, reply.message]);
     } catch (e) {
       setError((e as Error).message);
@@ -73,7 +89,7 @@ export function AssistantPanel({ onClose }: { onClose: () => void }) {
             Ask me anything about planning a trip.
             <div className="suggestions">
               {SUGGESTED_PROMPTS.map((prompt) => (
-                <button key={prompt} type="button" className="secondary" onClick={() => void send(prompt)}>
+                <button key={prompt} type="button" className="secondary" onClick={() => void send(prompt, true)}>
                   {prompt}
                 </button>
               ))}
